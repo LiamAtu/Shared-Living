@@ -19,6 +19,11 @@ var __spreadValues = (a, b) => {
   return a;
 };
 var __spreadProps = (a, b) => __defProps(a, __getOwnPropDescs(b));
+var __glob = (map) => (path) => {
+  var fn = map[path];
+  if (fn) return fn();
+  throw new Error("Module not found in bundle: " + path);
+};
 var __objRest = (source, exclude) => {
   var target = {};
   for (var prop in source)
@@ -56,6 +61,7 @@ var __async = (__this, __arguments, generator) => {
 export {
   __spreadValues,
   __spreadProps,
+  __glob,
   __objRest,
   __superGet,
   __async

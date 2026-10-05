@@ -6,7 +6,7 @@ import {
   __async,
   __spreadValues,
   __superGet
-} from "./chunk-5K356HEJ.js";
+} from "./chunk-EGSMBJJY.js";
 
 // node_modules/@supabase/supabase-js/dist/tracingRegistry.mjs
 var EXTRACTOR_KEY = /* @__PURE__ */ Symbol.for("@supabase/supabase-js.traceContextExtractor");

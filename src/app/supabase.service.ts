@@ -88,4 +88,168 @@ export class SupabaseService {
     if (error) throw error;
     return data as string;
   }
+
+  async updateHouse(houseId: string, changes: Partial<Pick<House, 'name' | 'monthly_rent' | 'rent_mode'>>) {
+    const { error } = await this.client.from('houses').update(changes).eq('id', houseId);
+    if (error) throw error;
+  }
+
+  // ---------- Members ----------
+
+  async getMembers(houseId: string): Promise<Member[]> {
+    const { data, error } = await this.client
+      .from('house_members')
+      .select('user_id, role, monthly_credit_target, profile:profiles(display_name)')
+      .eq('house_id', houseId);
+    if (error) throw error;
+    return (data ?? []).map((m: any) => ({
+      user_id: m.user_id,
+      role: m.role,
+      monthly_credit_target: m.monthly_credit_target,
+      display_name: m.profile?.display_name ?? 'Housemate',
+    }));
+  }
+
+  // ---------- Chores ----------
+
+  async getChores(houseId: string): Promise<Chore[]> {
+    const { data, error } = await this.client
+      .from('chores')
+      .select('id, name, description, credit_value, suggested_frequency')
+      .eq('house_id', houseId)
+      .eq('is_active', true)
+      .order('credit_value', { ascending: false });
+    if (error) throw error;
+    return data as Chore[];
+  }
+
+  async addChore(houseId: string, name: string, creditValue: number): Promise<void> {
+    const { error } = await this.client
+      .from('chores')
+      .insert({ house_id: houseId, name, credit_value: creditValue });
+    if (error) throw error;
+  }
+
+  /** Hides a chore. Past logs keep their credits. */
+  async archiveChore(choreId: string): Promise<void> {
+    const { error } = await this.client.from('chores').update({ is_active: false }).eq('id', choreId);
+    if (error) throw error;
+  }
+
+  // ---------- Chore logs ----------
+
+  /** Mark a chore as done. The database fills in who, when and how many credits. */
+  async logChore(choreId: string, note?: string): Promise<void> {
+    const { error } = await this.client
+      .from('chore_logs')
+      .insert({ chore_id: choreId, note: note?.trim() || null } as any);
+    if (error) throw error;
+  }
+
+  async getRecentLogs(houseId: string, limit = 30): Promise<ChoreLog[]> {
+    const { data, error } = await this.client
+      .from('chore_logs')
+      .select(
+        'id, user_id, credits_awarded, note, status, completed_at, reviewed_by, ' +
+          'chore:chores(name), person:profiles!chore_logs_user_id_fkey(display_name)',
+      )
+      .eq('house_id', houseId)
+      .order('completed_at', { ascending: false })
+      .limit(limit);
+    if (error) throw error;
+    return (data ?? []).map((l: any) => ({
+      id: l.id,
+      user_id: l.user_id,
+      credits_awarded: l.credits_awarded,
+      note: l.note,
+      status: l.status,
+      completed_at: l.completed_at,
+      reviewed_by: l.reviewed_by,
+      chore_name: l.chore?.name ?? 'Chore',
+      person_name: l.person?.display_name ?? 'Housemate',
+    }));
+  }
+
+  async reviewLog(logId: string, approve: boolean): Promise<void> {
+    const { error } = await this.client.rpc('review_chore_log', { log_id: logId, approve });
+    if (error) throw error;
+  }
+
+  /** Undo your own chore while it's still waiting for approval. */
+  async deleteLog(logId: string): Promise<void> {
+    const { error } = await this.client.from('chore_logs').delete().eq('id', logId);
+    if (error) throw error;
+  }
+
+  // ---------- Monthly statements ----------
+
+  /** Everyone in the house for one month (defaults to this month). */
+  async getStatements(houseId: string, month = SupabaseService.thisMonth()): Promise<Statement[]> {
+    const { data, error } = await this.client
+      .from('monthly_statements')
+      .select('user_id, month, credits_earned, monthly_credit_target, credits_remaining, monthly_rent, rent_owed')
+      .eq('house_id', houseId)
+      .eq('month', month);
+    if (error) throw error;
+    return data as Statement[];
+  }
+
+  static thisMonth(): string {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-01`;
+  }
+
+  // ---------- Live updates ----------
+
+  /** Calls onChange whenever chores, logs or members change in this house.
+   *  Returns a function that stops listening. */
+  watchHouse(houseId: string, onChange: () => void): () => void {
+    const filter = `house_id=eq.${houseId}`;
+    const channel = this.client
+      .channel(`house-${houseId}`)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'chore_logs', filter }, onChange)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'chores', filter }, onChange)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'house_members', filter }, onChange)
+      .subscribe();
+    return () => {
+      this.client.removeChannel(channel);
+    };
+  }
+}
+
+export interface Member {
+  user_id: string;
+  role: 'admin' | 'member';
+  monthly_credit_target: number;
+  display_name: string;
+}
+
+export interface Chore {
+  id: string;
+  name: string;
+  description: string | null;
+  credit_value: number;
+  suggested_frequency: string;
+}
+
+export interface ChoreLog {
+  id: string;
+  user_id: string;
+  credits_awarded: number;
+  note: string | null;
+  status: 'pending' | 'approved' | 'rejected';
+  completed_at: string;
+  reviewed_by: string | null;
+  chore_name: string;
+  person_name: string;
+}
+
+export interface Statement {
+  user_id: string;
+  month: string;
+  credits_earned: number;
+  monthly_credit_target: number;
+  credits_remaining: number;
+  monthly_rent: number;
+  rent_owed: number;
 }
