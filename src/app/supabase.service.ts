@@ -110,6 +110,16 @@ export class SupabaseService {
     }));
   }
 
+  /** Admin only: how many credits this person needs to earn each month. */
+  async setCreditTarget(houseId: string, userId: string, target: number): Promise<void> {
+    const { error } = await this.client
+      .from('house_members')
+      .update({ monthly_credit_target: target })
+      .eq('house_id', houseId)
+      .eq('user_id', userId);
+    if (error) throw error;
+  }
+
   // ---------- Chores ----------
 
   async getChores(houseId: string): Promise<Chore[]> {

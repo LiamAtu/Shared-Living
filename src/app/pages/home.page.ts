@@ -160,8 +160,13 @@ import {
           <!-- ===== House this month ===== -->
           <ion-list inset>
             <ion-list-header><ion-label>House this month</ion-label></ion-list-header>
+            @if (isAdmin()) {
+              <ion-item lines="none">
+                <ion-note class="hint">Tap someone to change their monthly target.</ion-note>
+              </ion-item>
+            }
             @for (row of leaderboard(); track row.user_id) {
-              <ion-item>
+              <ion-item [button]="isAdmin()" [detail]="false" (click)="isAdmin() && editTarget(row)">
                 <ion-label>
                   <h3>{{ row.name }}{{ row.user_id === myId() ? ' (you)' : '' }}</h3>
                   <p>{{ row.earned }} / {{ row.target }} credits · rent {{ row.rent | currency: h.currency }}</p>
@@ -245,6 +250,7 @@ import {
     ion-list-header ion-button { margin-right: 8px; }
     ion-note.red { color: var(--ion-color-danger); font-weight: 700; }
     ion-note.green { color: var(--ion-color-success); font-weight: 700; }
+    ion-note.hint { font-size: 0.85rem; }
     .code { font-family: ui-monospace, monospace; letter-spacing: 0.15em; font-size: 1.2rem !important; }
     ion-segment { margin: 8px 0; }
     ion-segment-button ion-label { white-space: normal; font-size: 0.8rem; }
@@ -422,6 +428,36 @@ export class HomePage implements OnInit, OnDestroy {
           role: 'destructive',
           handler: () => {
             this.act(() => this.supabase.archiveChore(chore.id), `Removed ${chore.name}`);
+          },
+        },
+      ],
+    });
+    await alert.present();
+  }
+
+  async editTarget(row: { user_id: string; name: string; target: number }) {
+    const h = this.house();
+    if (!h) return;
+    const who = row.user_id === this.myId() ? 'your' : `${row.name}'s`;
+    const alert = await this.alerts.create({
+      header: `Set ${who} monthly target`,
+      message: 'Credits needed each month to live rent free.',
+      inputs: [{ name: 'target', type: 'number', value: row.target, min: 1 }],
+      buttons: [
+        { text: 'Cancel', role: 'cancel' },
+        {
+          text: 'Save',
+          handler: (v) => {
+            const target = Math.round(Number(v?.target));
+            if (!(target > 0)) {
+              this.show('Enter a number above 0.');
+              return false;
+            }
+            this.act(
+              () => this.supabase.setCreditTarget(h.id, row.user_id, target),
+              `Target set to ${target} credits`,
+            );
+            return true;
           },
         },
       ],
