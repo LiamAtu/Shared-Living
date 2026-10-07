@@ -62,6 +62,36 @@ export class SupabaseService {
     await this.client.auth.signOut();
   }
 
+  // ---------- Profile ----------
+
+  async getMyName(): Promise<string> {
+    const id = this.session()?.user.id;
+    if (!id) return '';
+    const { data, error } = await this.client
+      .from('profiles')
+      .select('display_name')
+      .eq('id', id)
+      .maybeSingle();
+    if (error) throw error;
+    return data?.display_name ?? '';
+  }
+
+  async updateName(name: string): Promise<void> {
+    const id = this.session()?.user.id;
+    const { error } = await this.client.from('profiles').update({ display_name: name }).eq('id', id);
+    if (error) throw error;
+  }
+
+  /** Returns true if Supabase sent a confirmation link to the new address first. */
+  async updateEmail(email: string): Promise<boolean> {
+    const { data, error } = await this.client.auth.updateUser(
+      { email },
+      { emailRedirectTo: `${location.origin}/settings` },
+    );
+    if (error) throw error;
+    return !!data.user?.new_email;
+  }
+
   // ---------- Houses ----------
 
   /** The house the user belongs to (Row Level Security only returns their own). */

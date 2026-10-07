@@ -4,81 +4,94 @@ import { Router } from '@angular/router';
 import {
   IonButton,
   IonButtons,
-  IonCard,
-  IonCardContent,
-  IonCardHeader,
-  IonCardSubtitle,
-  IonCardTitle,
   IonContent,
   IonHeader,
+  IonIcon,
   IonInput,
-  IonTitle,
   IonToolbar,
   ToastController,
 } from '@ionic/angular';
+import { addIcons } from 'ionicons';
+import { homeOutline, peopleOutline } from 'ionicons/icons';
 import { SupabaseService } from '../supabase.service';
 
 @Component({
   selector: 'app-house-setup',
   imports: [
     FormsModule,
-    IonHeader, IonToolbar, IonTitle, IonButtons, IonButton, IonContent,
-    IonCard, IonCardHeader, IonCardTitle, IonCardSubtitle, IonCardContent, IonInput,
+    IonHeader, IonToolbar, IonButtons, IonButton, IonContent, IonInput, IonIcon,
   ],
   template: `
-    <ion-header>
-      <ion-toolbar color="primary">
-        <ion-title>Your house</ion-title>
+    <ion-header class="ion-no-border">
+      <ion-toolbar>
         <ion-buttons slot="end">
           <ion-button (click)="signOut()">Log out</ion-button>
         </ion-buttons>
       </ion-toolbar>
     </ion-header>
 
-    <ion-content class="ion-padding">
-      <div class="wrap">
-        <ion-card>
-          <ion-card-header>
-            <ion-card-title>Join a house</ion-card-title>
-            <ion-card-subtitle>Got an invite code from a housemate?</ion-card-subtitle>
-          </ion-card-header>
-          <ion-card-content>
-            <ion-input
-              label="Invite code" labelPlacement="stacked" fill="outline"
-              placeholder="e.g. 3f9a1c2b" [(ngModel)]="code" name="code" />
-            <ion-button expand="block" (click)="join()" [disabled]="busy() || !code.trim()">
-              Join house
-            </ion-button>
-          </ion-card-content>
-        </ion-card>
+    <ion-content>
+      <div class="sl-page">
+        <div class="intro">
+          <img src="icons/icon-96x96.png" alt="" />
+          <h1>Find your house</h1>
+          <p>Join your housemates with their invite code, or start a new house.</p>
+        </div>
 
-        <p class="or">or</p>
+        <div class="sl-card box">
+          <div class="box-head">
+            <div class="sl-tile mint"><ion-icon name="people-outline" /></div>
+            <div>
+              <h2>Join a house</h2>
+              <p>Got an invite code from a housemate?</p>
+            </div>
+          </div>
+          <ion-input
+            label="Invite code" labelPlacement="stacked" fill="outline"
+            placeholder="e.g. 3f9a1c2b" [(ngModel)]="code" name="code" class="mono" />
+          <ion-button class="pill" expand="block" (click)="join()" [disabled]="busy() || !code.trim()">
+            Join house
+          </ion-button>
+        </div>
 
-        <ion-card>
-          <ion-card-header>
-            <ion-card-title>Start a new house</ion-card-title>
-            <ion-card-subtitle>You'll be the admin and get a code to share.</ion-card-subtitle>
-          </ion-card-header>
-          <ion-card-content>
-            <ion-input
-              label="House name" labelPlacement="stacked" fill="outline"
-              placeholder="e.g. 12 Main Street" [(ngModel)]="houseName" name="houseName" />
-            <ion-input
-              label="Monthly rent (€)" labelPlacement="stacked" fill="outline" type="number"
-              [(ngModel)]="rent" name="rent" />
-            <ion-button expand="block" fill="outline" (click)="create()"
-              [disabled]="busy() || !houseName.trim()">
-              Create house
-            </ion-button>
-          </ion-card-content>
-        </ion-card>
+        <div class="or"><span>or</span></div>
+
+        <div class="sl-card box">
+          <div class="box-head">
+            <div class="sl-tile butter"><ion-icon name="home-outline" /></div>
+            <div>
+              <h2>Start a new house</h2>
+              <p>You'll be the admin and get a code to share.</p>
+            </div>
+          </div>
+          <ion-input
+            label="House name" labelPlacement="stacked" fill="outline"
+            placeholder="e.g. 12 Main Street" [(ngModel)]="houseName" name="houseName" />
+          <ion-input
+            label="Monthly rent (€)" labelPlacement="stacked" fill="outline" type="number"
+            [(ngModel)]="rent" name="rent" />
+          <ion-button class="pill" expand="block" fill="outline" (click)="create()"
+            [disabled]="busy() || !houseName.trim()">
+            Create house
+          </ion-button>
+        </div>
       </div>
     </ion-content>
   `,
   styles: `
-    .wrap { max-width: 480px; margin: 0 auto; }
-    ion-card-content { display: flex; flex-direction: column; gap: 14px; }
-    .or { text-align: center; color: var(--ion-color-medium); margin: 4px 0; }
+    .intro { text-align: center; margin: 0 0 20px; }
+    .intro img { width: 64px; height: 64px; border-radius: 18px; box-shadow: var(--sl-shadow); }
+    .intro h1 { font-weight: 900; font-size: 1.6rem; margin: 12px 0 4px; }
+    .intro p { color: var(--sl-muted); margin: 0; font-weight: 600; }
+    .box { padding: 16px; display: flex; flex-direction: column; gap: 14px; }
+    .box-head { display: flex; align-items: center; }
+    .box-head h2 { margin: 0; font-size: 1.1rem; font-weight: 800; }
+    .box-head p { margin: 2px 0 0; color: var(--sl-muted); font-size: 0.88rem; }
+    ion-input { --border-radius: 14px; font-weight: 600; }
+    ion-input.mono { font-family: ui-monospace, Menlo, monospace; letter-spacing: 0.12em; }
+    .pill { height: 46px; }
+    .or { display: flex; align-items: center; gap: 12px; margin: 18px 8px; color: var(--sl-muted); font-weight: 700; }
+    .or::before, .or::after { content: ''; flex: 1; height: 1px; background: var(--sl-border); }
   `,
 })
 export class HouseSetupPage {
@@ -90,6 +103,10 @@ export class HouseSetupPage {
   code = '';
   houseName = '';
   rent = 150;
+
+  constructor() {
+    addIcons({ homeOutline, peopleOutline });
+  }
 
   join() {
     return this.run(() => this.supabase.joinHouse(this.code));

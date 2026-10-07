@@ -18,5 +18,10 @@ export const routes: Routes = [
     canActivate: [houseGuard],
     loadComponent: () => import('./pages/home.page').then((m) => m.HomePage),
   },
+  {
+    path: 'settings',
+    canActivate: [houseGuard],
+    loadComponent: () => import('./pages/settings.page').then((m) => m.SettingsPage),
+  },
   { path: '**', redirectTo: 'home' },
 ];
