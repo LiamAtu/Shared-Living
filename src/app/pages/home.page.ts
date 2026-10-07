@@ -125,7 +125,10 @@ import { choreIcon, personTone, Tone } from '../chore-icons';
           }
 
           <!-- ===== My chores ===== -->
-          <div class="sl-section"><h2>My chores@if (mine().length) {<span class="count">{{ mine().length }}</span>}</h2></div>
+          <div class="sl-section">
+            <h2>My chores@if (mine().length) {<span class="count">{{ mine().length }}</span>}</h2>
+            <ion-button fill="clear" size="small" routerLink="/plan">Plan my day</ion-button>
+          </div>
           <div class="sl-card">
             @if (mine().length) {
               <ion-list lines="full">
@@ -146,7 +149,7 @@ import { choreIcon, personTone, Tone } from '../chore-icons';
                 }
               </ion-list>
             } @else {
-              <div class="sl-empty">Nothing on your list yet. Accept a chore below to start earning.</div>
+              <div class="sl-empty">Nothing on your list yet. Tap <strong>Plan my day</strong> or accept a chore below to start earning.</div>
             }
           </div>
 

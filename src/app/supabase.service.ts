@@ -276,6 +276,198 @@ export class SupabaseService {
       this.client.removeChannel(channel);
     };
   }
+
+  /** Calls onChange whenever any of these tables change in this house. */
+  watchTables(houseId: string, tables: string[], onChange: () => void): () => void {
+    const filter = `house_id=eq.${houseId}`;
+    let channel = this.client.channel(`${tables.join('-')}-${houseId}-${Math.random().toString(36).slice(2, 8)}`);
+    for (const table of tables) {
+      channel = channel.on('postgres_changes', { event: '*', schema: 'public', table, filter }, onChange);
+    }
+    channel.subscribe();
+    return () => {
+      this.client.removeChannel(channel);
+    };
+  }
+
+  // ---------- Dinner ----------
+
+  async getMenu(houseId: string, from: string, to: string): Promise<DinnerDay[]> {
+    const { data, error } = await this.client
+      .from('dinner_menu')
+      .select('id, day, meal, note, updated_at, by:profiles!dinner_menu_updated_by_fkey(display_name)')
+      .eq('house_id', houseId)
+      .gte('day', from)
+      .lte('day', to);
+    if (error) throw error;
+    return (data ?? []).map((d: any) => ({
+      id: d.id,
+      day: d.day,
+      meal: d.meal,
+      note: d.note,
+      updated_at: d.updated_at,
+      by_name: d.by?.display_name ?? null,
+    }));
+  }
+
+  async setDinner(day: string, meal: string, note?: string | null): Promise<void> {
+    const { error } = await this.client.rpc('set_dinner', {
+      p_day: day,
+      p_meal: meal,
+      p_note: note ?? null,
+    });
+    if (error) throw error;
+  }
+
+  async clearDinner(houseId: string, day: string): Promise<void> {
+    const { error } = await this.client.from('dinner_menu').delete().eq('house_id', houseId).eq('day', day);
+    if (error) throw error;
+  }
+
+  /** Every dinner the house has had, most common first. */
+  async pastDinners(): Promise<string[]> {
+    const { data, error } = await this.client.rpc('past_dinners');
+    if (error) throw error;
+    return (data ?? []).map((d: any) => d.meal as string);
+  }
+
+  async getSuggestions(houseId: string): Promise<Suggestion[]> {
+    const { data, error } = await this.client
+      .from('dinner_suggestions')
+      .select('id, meal, created_at, suggested_by, by:profiles!dinner_suggestions_suggested_by_fkey(display_name)')
+      .eq('house_id', houseId)
+      .order('created_at', { ascending: false });
+    if (error) throw error;
+    return (data ?? []).map((s: any) => ({
+      id: s.id,
+      meal: s.meal,
+      created_at: s.created_at,
+      suggested_by: s.suggested_by,
+      by_name: s.by?.display_name ?? 'Someone',
+    }));
+  }
+
+  async addSuggestion(houseId: string, meal: string): Promise<void> {
+    const { error } = await this.client
+      .from('dinner_suggestions')
+      .insert({ house_id: houseId, meal: meal.trim(), suggested_by: this.session()?.user.id });
+    if (error) throw error;
+  }
+
+  async removeSuggestion(id: string): Promise<void> {
+    const { error } = await this.client.from('dinner_suggestions').delete().eq('id', id);
+    if (error) throw error;
+  }
+
+  // ---------- Shopping list ----------
+
+  async getShopping(houseId: string): Promise<ShoppingItem[]> {
+    const { data, error } = await this.client
+      .from('shopping_items')
+      .select(
+        'id, name, created_at, bought, bought_at, ' +
+          'adder:profiles!shopping_items_added_by_fkey(display_name), ' +
+          'buyer:profiles!shopping_items_bought_by_fkey(display_name)',
+      )
+      .eq('house_id', houseId)
+      .order('created_at', { ascending: false });
+    if (error) throw error;
+    return (data ?? []).map((i: any) => ({
+      id: i.id,
+      name: i.name,
+      created_at: i.created_at,
+      bought: i.bought,
+      bought_at: i.bought_at,
+      added_by_name: i.adder?.display_name ?? 'Someone',
+      bought_by_name: i.buyer?.display_name ?? null,
+    }));
+  }
+
+  async addShoppingItem(houseId: string, name: string): Promise<void> {
+    const { error } = await this.client
+      .from('shopping_items')
+      .insert({ house_id: houseId, name: name.trim(), added_by: this.session()?.user.id });
+    if (error) throw error;
+  }
+
+  async setBought(id: string, bought: boolean): Promise<void> {
+    const { error } = await this.client.from('shopping_items').update({ bought }).eq('id', id);
+    if (error) throw error;
+  }
+
+  async removeShoppingItem(id: string): Promise<void> {
+    const { error } = await this.client.from('shopping_items').delete().eq('id', id);
+    if (error) throw error;
+  }
+
+  async clearBought(houseId: string): Promise<void> {
+    const { error } = await this.client.from('shopping_items').delete().eq('house_id', houseId).eq('bought', true);
+    if (error) throw error;
+  }
+
+  // ---------- History ----------
+
+  /** Done chores (approved or waiting for OK) since a date, oldest first. */
+  async getHistory(houseId: string, sinceIso: string): Promise<HistoryEntry[]> {
+    const { data, error } = await this.client
+      .from('chore_logs')
+      .select(
+        'id, user_id, credits_awarded, status, completed_at, ' +
+          'chore:chores(name), person:profiles!chore_logs_user_id_fkey(display_name)',
+      )
+      .eq('house_id', houseId)
+      .in('status', ['pending', 'approved'])
+      .gte('completed_at', sinceIso)
+      .order('completed_at', { ascending: true })
+      .limit(2000);
+    if (error) throw error;
+    return (data ?? []).map((l: any) => ({
+      id: l.id,
+      user_id: l.user_id,
+      credits: l.credits_awarded,
+      status: l.status,
+      completed_at: l.completed_at,
+      chore_name: l.chore?.name ?? 'Chore',
+      person_name: l.person?.display_name ?? 'Housemate',
+    }));
+  }
+}
+
+export interface DinnerDay {
+  id: string;
+  day: string; // YYYY-MM-DD
+  meal: string;
+  note: string | null;
+  updated_at: string;
+  by_name: string | null;
+}
+
+export interface Suggestion {
+  id: string;
+  meal: string;
+  created_at: string;
+  suggested_by: string | null;
+  by_name: string;
+}
+
+export interface ShoppingItem {
+  id: string;
+  name: string;
+  created_at: string;
+  bought: boolean;
+  bought_at: string | null;
+  added_by_name: string;
+  bought_by_name: string | null;
+}
+
+export interface HistoryEntry {
+  id: string;
+  user_id: string;
+  credits: number;
+  status: 'pending' | 'approved';
+  completed_at: string;
+  chore_name: string;
+  person_name: string;
 }
 
 export interface Member {

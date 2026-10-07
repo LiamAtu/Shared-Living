@@ -71,6 +71,8 @@ Deno.serve(async (req) => {
         return reply(await reviewed(body.log_id));
       case 'reminder':
         return reply(await reminders(body.log_ids ?? []));
+      case 'morning':
+        return reply(await morning(body.house_ids ?? []));
       default:
         return reply({ error: `Unknown type ${body.type}` }, 400);
     }
@@ -159,6 +161,25 @@ async function reminders(logIds: string[]) {
     sent += r.sent;
   }
   return { sent };
+}
+
+/** 9am: everyone picks what they'll do today. */
+async function morning(houseIds: string[]) {
+  if (!houseIds.length) return { sent: 0 };
+  const { data: members, error } = await db
+    .from('house_members')
+    .select('user_id')
+    .in('house_id', houseIds);
+  if (error) throw error;
+  return sendTo(
+    (members ?? []).map((m) => m.user_id),
+    {
+      title: 'Good morning! Pick your chores for today',
+      body: 'Tap to choose what you’ll take on today and keep your rent down.',
+      tag: 'morning',
+      url: '/plan',
+    },
+  );
 }
 
 // ---------- Sending ----------
