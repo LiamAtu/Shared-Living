@@ -122,21 +122,26 @@ export class SupabaseService {
 
   // ---------- Chores ----------
 
-  async getChores(houseId: string): Promise<Chore[]> {
-    const { data, error } = await this.client
-      .from('chores')
-      .select('id, name, description, credit_value, suggested_frequency')
-      .eq('house_id', houseId)
-      .eq('is_active', true)
-      .order('credit_value', { ascending: false });
+  /** Every chore in the house and what you can do with it right now. */
+  async getBoard(): Promise<BoardChore[]> {
+    const { data, error } = await this.client.rpc('chore_board');
     if (error) throw error;
-    return data as Chore[];
+    return (data ?? []) as BoardChore[];
   }
 
-  async addChore(houseId: string, name: string, creditValue: number): Promise<void> {
-    const { error } = await this.client
-      .from('chores')
-      .insert({ house_id: houseId, name, credit_value: creditValue });
+  async addChore(
+    houseId: string,
+    name: string,
+    creditValue: number,
+    frequency: 'daily' | 'weekly',
+  ): Promise<void> {
+    const { error } = await this.client.from('chores').insert({
+      house_id: houseId,
+      name,
+      credit_value: creditValue,
+      suggested_frequency: frequency,
+      cooldown_days: frequency === 'weekly' ? 5 : 0,
+    });
     if (error) throw error;
   }
 
@@ -148,23 +153,38 @@ export class SupabaseService {
 
   // ---------- Chore logs ----------
 
-  /** Mark a chore as done. The database fills in who, when and how many credits. */
-  async logChore(choreId: string, note?: string): Promise<void> {
-    const { error } = await this.client
-      .from('chore_logs')
-      .insert({ chore_id: choreId, note: note?.trim() || null } as any);
+  /** Accept a chore: it goes onto your list with a deadline. */
+  async claimChore(choreId: string): Promise<void> {
+    const { error } = await this.client.rpc('claim_chore', { p_chore: choreId });
     if (error) throw error;
   }
 
+  /** Mark an accepted chore as done; it goes to housemates for approval. */
+  async completeChore(logId: string, note?: string): Promise<void> {
+    const { error } = await this.client.rpc('complete_chore', {
+      p_log: logId,
+      p_note: note?.trim() || null,
+    });
+    if (error) throw error;
+  }
+
+  /** Give an accepted chore back so someone else can take it. */
+  async releaseChore(logId: string): Promise<void> {
+    const { error } = await this.client.rpc('release_chore', { p_log: logId });
+    if (error) throw error;
+  }
+
+  /** Done, approved, rejected and missed chores (not ones still in progress). */
   async getRecentLogs(houseId: string, limit = 30): Promise<ChoreLog[]> {
     const { data, error } = await this.client
       .from('chore_logs')
       .select(
-        'id, user_id, credits_awarded, note, status, completed_at, reviewed_by, ' +
+        'id, user_id, credits_awarded, note, status, completed_at, activity_at, reviewed_by, ' +
           'chore:chores(name), person:profiles!chore_logs_user_id_fkey(display_name)',
       )
       .eq('house_id', houseId)
-      .order('completed_at', { ascending: false })
+      .neq('status', 'claimed')
+      .order('activity_at', { ascending: false })
       .limit(limit);
     if (error) throw error;
     return (data ?? []).map((l: any) => ({
@@ -174,6 +194,7 @@ export class SupabaseService {
       note: l.note,
       status: l.status,
       completed_at: l.completed_at,
+      activity_at: l.activity_at,
       reviewed_by: l.reviewed_by,
       chore_name: l.chore?.name ?? 'Chore',
       person_name: l.person?.display_name ?? 'Housemate',
@@ -234,12 +255,21 @@ export interface Member {
   display_name: string;
 }
 
-export interface Chore {
-  id: string;
+/** A chore as you see it right now (from the chore_board function). */
+export interface BoardChore {
+  chore_id: string;
   name: string;
-  description: string | null;
   credit_value: number;
-  suggested_frequency: string;
+  frequency: 'daily' | 'weekly';
+  max_per_person_month: number | null;
+  /** mine: on your list · taken: someone else has it · done: done today (daily)
+   *  cooldown: weekly chore resting · limit: you hit your monthly limit · available */
+  state: 'mine' | 'taken' | 'done' | 'cooldown' | 'limit' | 'available';
+  available_from: string | null;
+  holder_name: string | null;
+  log_id: string | null;
+  due_at: string | null;
+  my_count: number;
 }
 
 export interface ChoreLog {
@@ -247,8 +277,9 @@ export interface ChoreLog {
   user_id: string;
   credits_awarded: number;
   note: string | null;
-  status: 'pending' | 'approved' | 'rejected';
-  completed_at: string;
+  status: 'pending' | 'approved' | 'rejected' | 'expired';
+  completed_at: string | null;
+  activity_at: string;
   reviewed_by: string | null;
   chore_name: string;
   person_name: string;
