@@ -2,6 +2,7 @@ import { Component, computed, inject, OnDestroy, OnInit, signal } from '@angular
 import { CurrencyPipe } from '@angular/common';
 import { Router } from '@angular/router';
 import {
+  ActionSheetController,
   AlertController,
   IonBadge,
   IonButton,
@@ -36,7 +37,7 @@ import {
   trashOutline,
 } from 'ionicons/icons';
 import {
-  Chore,
+  BoardChore,
   ChoreLog,
   House,
   Member,
@@ -107,7 +108,7 @@ import {
                 <ion-item>
                   <ion-label>
                     <h3>{{ l.person_name }} · {{ l.chore_name }}</h3>
-                    <p>{{ timeAgo(l.completed_at) }}{{ l.note ? ' · “' + l.note + '”' : '' }}</p>
+                    <p>{{ timeAgo(l.activity_at) }}{{ l.note ? ' · “' + l.note + '”' : '' }}</p>
                   </ion-label>
                   <ion-badge slot="end" color="medium">+{{ l.credits_awarded }}</ion-badge>
                   <ion-button slot="end" fill="clear" color="success" (click)="review(l, true)" aria-label="Approve">
@@ -121,33 +122,60 @@ import {
             </ion-list>
           }
 
-          <!-- ===== Chores ===== -->
+          <!-- ===== My chores ===== -->
+          <ion-list inset>
+            <ion-list-header><ion-label>My chores</ion-label></ion-list-header>
+            @for (c of mine(); track c.chore_id) {
+              <ion-item>
+                <ion-label class="ion-text-wrap">
+                  <h3>{{ c.name }}</h3>
+                  <p>{{ c.frequency === 'daily' ? 'Do today' : 'Do by Sunday' }} · {{ credits(c.credit_value) }}</p>
+                </ion-label>
+                <ion-button slot="end" fill="clear" color="medium" (click)="giveBack(c)" aria-label="Give back">
+                  <ion-icon slot="icon-only" name="arrow-undo-outline" />
+                </ion-button>
+                <ion-button slot="end" (click)="complete(c)">Done</ion-button>
+              </ion-item>
+            } @empty {
+              <ion-item lines="none">
+                <ion-label class="ion-text-wrap" color="medium">Nothing on your list. Accept a chore below.</ion-label>
+              </ion-item>
+            }
+          </ion-list>
+
+          <!-- ===== Available ===== -->
           <ion-list inset>
             <ion-list-header>
-              <ion-label>Chores</ion-label>
+              <ion-label>Available</ion-label>
               @if (isAdmin()) {
+                <ion-button (click)="editing.set(!editing())">{{ editing() ? 'Finish' : 'Edit' }}</ion-button>
                 <ion-button (click)="addChore()">
                   <ion-icon slot="start" name="add-outline" /> Add
                 </ion-button>
               }
             </ion-list-header>
-            @for (c of chores(); track c.id) {
+            @for (c of available(); track c.chore_id) {
               <ion-item>
-                <ion-label>
+                <ion-label class="ion-text-wrap">
                   <h3>{{ c.name }}</h3>
-                  <p>{{ c.credit_value }} credits</p>
+                  <p>
+                    {{ c.frequency === 'daily' ? 'Daily' : 'Weekly' }} · {{ credits(c.credit_value) }}
+                    @if (c.max_per_person_month && c.my_count > 0) { · you've done {{ c.my_count }}/{{ c.max_per_person_month }} }
+                  </p>
                 </ion-label>
-                @if (isAdmin()) {
+                @if (editing()) {
                   <ion-button slot="end" fill="clear" color="medium" (click)="removeChore(c)" aria-label="Remove chore">
                     <ion-icon slot="icon-only" name="trash-outline" />
                   </ion-button>
                 }
-                <ion-button slot="end" (click)="logChore(c)">Done</ion-button>
+                <ion-button slot="end" fill="outline" (click)="accept(c)">Accept</ion-button>
               </ion-item>
             } @empty {
               <ion-item lines="none">
                 <ion-label class="ion-text-wrap" color="medium">
-                  @if (isAdmin()) {
+                  @if (board().length) {
+                    Nothing to accept right now.
+                  } @else if (isAdmin()) {
                     No chores yet. Tap <strong>Add</strong> to set what each job is worth.
                   } @else {
                     No chores yet. Ask the house admin to add some.
@@ -156,6 +184,26 @@ import {
               </ion-item>
             }
           </ion-list>
+
+          <!-- ===== Not available ===== -->
+          @if (unavailable().length) {
+            <ion-list inset>
+              <ion-list-header><ion-label>Not available right now</ion-label></ion-list-header>
+              @for (c of unavailable(); track c.chore_id) {
+                <ion-item>
+                  <ion-label class="ion-text-wrap">
+                    <h3 class="muted">{{ c.name }}</h3>
+                    <p>{{ reason(c) }}</p>
+                  </ion-label>
+                  @if (editing()) {
+                    <ion-button slot="end" fill="clear" color="medium" (click)="removeChore(c)" aria-label="Remove chore">
+                      <ion-icon slot="icon-only" name="trash-outline" />
+                    </ion-button>
+                  }
+                </ion-item>
+              }
+            </ion-list>
+          }
 
           <!-- ===== House this month ===== -->
           <ion-list inset>
@@ -185,10 +233,10 @@ import {
               <ion-item>
                 <ion-label class="ion-text-wrap">
                   <h3>{{ l.user_id === myId() ? 'You' : l.person_name }} · {{ l.chore_name }}</h3>
-                  <p>{{ timeAgo(l.completed_at) }}{{ l.note ? ' · “' + l.note + '”' : '' }}</p>
+                  <p>{{ timeAgo(l.activity_at) }}{{ l.note ? ' · “' + l.note + '”' : '' }}</p>
                 </ion-label>
                 <ion-badge slot="end" [color]="statusColour(l.status)">
-                  {{ l.status === 'pending' ? 'Pending' : l.status === 'approved' ? '+' + l.credits_awarded : 'Rejected' }}
+                  {{ statusLabel(l) }}
                 </ion-badge>
                 @if (l.user_id === myId() && l.status === 'pending') {
                   <ion-button slot="end" fill="clear" color="medium" (click)="undo(l)" aria-label="Undo">
@@ -251,6 +299,7 @@ import {
     ion-note.red { color: var(--ion-color-danger); font-weight: 700; }
     ion-note.green { color: var(--ion-color-success); font-weight: 700; }
     ion-note.hint { font-size: 0.85rem; }
+    h3.muted { color: var(--ion-color-medium); }
     .code { font-family: ui-monospace, monospace; letter-spacing: 0.15em; font-size: 1.2rem !important; }
     ion-segment { margin: 8px 0; }
     ion-segment-button ion-label { white-space: normal; font-size: 0.8rem; }
@@ -261,10 +310,12 @@ export class HomePage implements OnInit, OnDestroy {
   private router = inject(Router);
   private toast = inject(ToastController);
   private alerts = inject(AlertController);
+  private sheets = inject(ActionSheetController);
 
   readonly house = signal<House | null>(null);
   readonly members = signal<Member[]>([]);
-  readonly chores = signal<Chore[]>([]);
+  readonly board = signal<BoardChore[]>([]);
+  readonly editing = signal(false);
   readonly logs = signal<ChoreLog[]>([]);
   readonly statements = signal<Statement[]>([]);
 
@@ -277,6 +328,11 @@ export class HomePage implements OnInit, OnDestroy {
     const s = this.myStatement();
     return s ? Math.min(1, s.credits_earned / Math.max(1, s.monthly_credit_target)) : 0;
   });
+  readonly mine = computed(() => this.board().filter((c) => c.state === 'mine'));
+  readonly available = computed(() => this.board().filter((c) => c.state === 'available'));
+  readonly unavailable = computed(() =>
+    this.board().filter((c) => c.state !== 'mine' && c.state !== 'available'),
+  );
   readonly toReview = computed(() =>
     this.logs().filter((l) => l.status === 'pending' && l.user_id !== this.myId()),
   );
@@ -329,16 +385,16 @@ export class HomePage implements OnInit, OnDestroy {
     const h = this.house();
     if (!h) return;
     try {
-      const [house, members, chores, logs, statements] = await Promise.all([
+      const [house, members, board, logs, statements] = await Promise.all([
         this.supabase.getMyHouse(),
         this.supabase.getMembers(h.id),
-        this.supabase.getChores(h.id),
+        this.supabase.getBoard(),
         this.supabase.getRecentLogs(h.id),
         this.supabase.getStatements(h.id),
       ]);
       if (house) this.house.set(house);
       this.members.set(members);
-      this.chores.set(chores);
+      this.board.set(board);
       this.logs.set(logs);
       this.statements.set(statements);
     } catch (e: any) {
@@ -359,22 +415,64 @@ export class HomePage implements OnInit, OnDestroy {
 
   // ---------- Actions ----------
 
-  async logChore(chore: Chore) {
+  accept(c: BoardChore) {
+    const when = c.frequency === 'daily' ? 'today' : 'by Sunday';
+    return this.act(() => this.supabase.claimChore(c.chore_id), `${c.name} is on your list. Do it ${when}.`);
+  }
+
+  async complete(c: BoardChore) {
+    if (!c.log_id) return;
+    const logId = c.log_id;
     const alert = await this.alerts.create({
-      header: chore.name,
-      message: `Log this for ${chore.credit_value} credits? A housemate will approve it.`,
+      header: c.name,
+      message: `Mark as done for ${c.credit_value} credits? A housemate will approve it.`,
       inputs: [{ name: 'note', type: 'text', placeholder: 'Add a note (optional)' }],
       buttons: [
         { text: 'Cancel', role: 'cancel' },
         {
           text: 'Done it',
           handler: (values) => {
-            this.act(() => this.supabase.logChore(chore.id, values?.note), 'Logged. Waiting for approval.');
+            this.act(() => this.supabase.completeChore(logId, values?.note), 'Nice one. Waiting for approval.');
           },
         },
       ],
     });
     await alert.present();
+  }
+
+  async giveBack(c: BoardChore) {
+    if (!c.log_id) return;
+    const logId = c.log_id;
+    const alert = await this.alerts.create({
+      header: `Give back ${c.name}?`,
+      message: 'It goes back to Available so someone else can take it.',
+      buttons: [
+        { text: 'Keep it', role: 'cancel' },
+        {
+          text: 'Give back',
+          role: 'destructive',
+          handler: () => {
+            this.act(() => this.supabase.releaseChore(logId), `${c.name} is available again`);
+          },
+        },
+      ],
+    });
+    await alert.present();
+  }
+
+  reason(c: BoardChore): string {
+    switch (c.state) {
+      case 'taken':
+        return `${c.holder_name ?? 'Someone'} is on it`;
+      case 'done':
+        return `Done today by ${c.holder_name ?? 'someone'}`;
+      case 'cooldown':
+        return `Back on ${this.formatDate(c.available_from)}`;
+      case 'limit':
+        return `You've done your ${c.max_per_person_month} this month`;
+      default:
+        return '';
+    }
   }
 
   review(log: ChoreLog, approve: boolean) {
@@ -408,7 +506,7 @@ export class HomePage implements OnInit, OnDestroy {
               this.show('Give the chore a name and a number of credits.');
               return false;
             }
-            this.act(() => this.supabase.addChore(h.id, name, credits), `Added ${name}`);
+            this.pickFrequency(h.id, name, credits);
             return true;
           },
         },
@@ -417,7 +515,29 @@ export class HomePage implements OnInit, OnDestroy {
     await alert.present();
   }
 
-  async removeChore(chore: Chore) {
+  private async pickFrequency(houseId: string, name: string, credits: number) {
+    const sheet = await this.sheets.create({
+      header: `How often is ${name} done?`,
+      buttons: [
+        {
+          text: 'Daily (do it the day you accept it)',
+          handler: () => {
+            this.act(() => this.supabase.addChore(houseId, name, credits, 'daily'), `Added ${name}`);
+          },
+        },
+        {
+          text: 'Weekly (comes back 5 days after it was done)',
+          handler: () => {
+            this.act(() => this.supabase.addChore(houseId, name, credits, 'weekly'), `Added ${name}`);
+          },
+        },
+        { text: 'Cancel', role: 'cancel' },
+      ],
+    });
+    await sheet.present();
+  }
+
+  async removeChore(chore: BoardChore) {
     const alert = await this.alerts.create({
       header: `Remove ${chore.name}?`,
       message: 'Credits already earned for it are kept.',
@@ -427,7 +547,7 @@ export class HomePage implements OnInit, OnDestroy {
           text: 'Remove',
           role: 'destructive',
           handler: () => {
-            this.act(() => this.supabase.archiveChore(chore.id), `Removed ${chore.name}`);
+            this.act(() => this.supabase.archiveChore(chore.chore_id), `Removed ${chore.name}`);
           },
         },
       ],
@@ -499,7 +619,34 @@ export class HomePage implements OnInit, OnDestroy {
   }
 
   statusColour(status: ChoreLog['status']) {
-    return status === 'approved' ? 'success' : status === 'rejected' ? 'danger' : 'warning';
+    switch (status) {
+      case 'approved': return 'success';
+      case 'rejected': return 'danger';
+      case 'expired': return 'medium';
+      default: return 'warning';
+    }
+  }
+
+  statusLabel(l: ChoreLog): string {
+    switch (l.status) {
+      case 'approved': return '+' + l.credits_awarded;
+      case 'rejected': return 'Rejected';
+      case 'expired': return 'Missed';
+      default: return 'Pending';
+    }
+  }
+
+  credits(n: number): string {
+    return n === 1 ? '1 credit' : `${n} credits`;
+  }
+
+  formatDate(ymd: string | null): string {
+    if (!ymd) return '';
+    return new Date(ymd + 'T00:00:00').toLocaleDateString('en-IE', {
+      weekday: 'short',
+      day: 'numeric',
+      month: 'short',
+    });
   }
 
   timeAgo(iso: string): string {
