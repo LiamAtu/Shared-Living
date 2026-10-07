@@ -4,15 +4,11 @@ import { Router } from '@angular/router';
 import {
   IonButton,
   IonContent,
-  IonHeader,
   IonInput,
   IonLabel,
   IonSegment,
   IonSegmentButton,
   IonSpinner,
-  IonText,
-  IonTitle,
-  IonToolbar,
   ToastController,
 } from '@ionic/angular';
 import { SupabaseService } from '../supabase.service';
@@ -21,57 +17,54 @@ import { SupabaseService } from '../supabase.service';
   selector: 'app-login',
   imports: [
     FormsModule,
-    IonHeader, IonToolbar, IonTitle, IonContent, IonSegment, IonSegmentButton,
-    IonLabel, IonInput, IonButton, IonSpinner, IonText,
+    IonContent, IonSegment, IonSegmentButton, IonLabel, IonInput, IonButton, IonSpinner,
   ],
   template: `
-    <ion-header>
-      <ion-toolbar color="primary">
-        <ion-title>Shared Living</ion-title>
-      </ion-toolbar>
-    </ion-header>
-
-    <ion-content class="ion-padding">
+    <ion-content>
       <div class="wrap">
-        <h1>{{ mode() === 'login' ? 'Welcome back' : 'Create your account' }}</h1>
-        <ion-text color="medium">
-          <p>Log your chores, earn credits, and keep your rent down.</p>
-        </ion-text>
+        <img class="logo" src="icons/logo.png" alt="Shared Living" />
+        <h1>Shared Living</h1>
+        <p class="tag">Log your chores, earn credits, and keep your rent down.</p>
 
-        <ion-segment [value]="mode()" (ionChange)="mode.set($any($event.detail.value))">
-          <ion-segment-button value="login"><ion-label>Log in</ion-label></ion-segment-button>
-          <ion-segment-button value="signup"><ion-label>Sign up</ion-label></ion-segment-button>
-        </ion-segment>
+        <div class="sl-card form-card">
+          <ion-segment mode="ios" [value]="mode()" (ionChange)="mode.set($any($event.detail.value))">
+            <ion-segment-button value="login"><ion-label>Log in</ion-label></ion-segment-button>
+            <ion-segment-button value="signup"><ion-label>Sign up</ion-label></ion-segment-button>
+          </ion-segment>
 
-        <form (ngSubmit)="submit()">
-          @if (mode() === 'signup') {
+          <form (ngSubmit)="submit()">
+            @if (mode() === 'signup') {
+              <ion-input
+                label="Your name" labelPlacement="stacked" fill="outline"
+                name="name" [(ngModel)]="name" autocomplete="name" required />
+            }
             <ion-input
-              label="Your name" labelPlacement="stacked" fill="outline"
-              name="name" [(ngModel)]="name" autocomplete="name" required />
-          }
-          <ion-input
-            label="Email" labelPlacement="stacked" fill="outline" type="email"
-            name="email" [(ngModel)]="email" autocomplete="email" required />
-          <ion-input
-            label="Password" labelPlacement="stacked" fill="outline" type="password"
-            name="password" [(ngModel)]="password"
-            [autocomplete]="mode() === 'signup' ? 'new-password' : 'current-password'"
-            helperText="At least 6 characters" required />
+              label="Email" labelPlacement="stacked" fill="outline" type="email"
+              name="email" [(ngModel)]="email" autocomplete="email" required />
+            <ion-input
+              label="Password" labelPlacement="stacked" fill="outline" type="password"
+              name="password" [(ngModel)]="password"
+              [autocomplete]="mode() === 'signup' ? 'new-password' : 'current-password'"
+              [helperText]="mode() === 'signup' ? 'At least 6 characters' : ''" required />
 
-          <ion-button expand="block" type="submit" [disabled]="busy()">
-            @if (busy()) { <ion-spinner name="crescent" /> }
-            @else { {{ mode() === 'login' ? 'Log in' : 'Sign up' }} }
-          </ion-button>
-        </form>
+            <ion-button class="pill big" expand="block" type="submit" [disabled]="busy()">
+              @if (busy()) { <ion-spinner name="crescent" /> }
+              @else { {{ mode() === 'login' ? 'Log in' : 'Create account' }} }
+            </ion-button>
+          </form>
+        </div>
       </div>
     </ion-content>
   `,
   styles: `
-    .wrap { max-width: 420px; margin: 0 auto; padding-top: 24px; }
-    h1 { font-weight: 700; margin-bottom: 4px; }
-    ion-segment { margin: 24px 0 16px; }
-    form { display: flex; flex-direction: column; gap: 14px; }
-    ion-button { margin-top: 8px; }
+    .wrap { max-width: 420px; margin: 0 auto; padding: calc(28px + env(safe-area-inset-top)) 20px 32px; text-align: center; }
+    .logo { width: 104px; height: 104px; border-radius: 28px; box-shadow: var(--sl-shadow); }
+    h1 { font-weight: 900; font-size: 1.9rem; margin: 16px 0 4px; letter-spacing: -0.02em; }
+    .tag { color: var(--sl-muted); margin: 0 0 24px; font-weight: 600; }
+    .form-card { padding: 16px; text-align: left; }
+    form { display: flex; flex-direction: column; gap: 14px; margin-top: 16px; }
+    ion-input { --border-radius: 14px; --highlight-color-focused: var(--ion-color-primary); font-weight: 600; }
+    .pill.big { height: 48px; font-size: 1rem; margin-top: 6px; }
   `,
 })
 export class LoginPage {

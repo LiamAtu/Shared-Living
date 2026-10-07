@@ -6,10 +6,28 @@
   <base href="/">
   <meta name="viewport" content="viewport-fit=cover, width=device-width, initial-scale=1.0, minimum-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <meta name="color-scheme" content="light dark">
+  <meta name="theme-color" content="#FBF6EE">
   <meta name="apple-mobile-web-app-capable" content="yes">
-  <meta name="apple-mobile-web-app-status-bar-style" content="black">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="Shared Living">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
   <link rel="icon" type="image/x-icon" href="favicon.ico">
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
   <link rel="manifest" href="manifest.webmanifest">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&display=swap" rel="stylesheet">
+  <script>
+    // Apply light/dark before the app loads, so there's no flash of the wrong theme
+    (function () {
+      try {
+        var pref = localStorage.getItem('sl-theme') || 'system';
+        var dark = pref === 'dark' || (pref === 'system' && matchMedia('(prefers-color-scheme: dark)').matches);
+        if (dark) document.documentElement.classList.add('ion-palette-dark');
+        document.querySelector('meta[name="theme-color"]').setAttribute('content', dark ? '#161E2C' : '#FBF6EE');
+      } catch (e) {}
+    })();
+  </script>
 </head>
 <body>
   <app-root></app-root>

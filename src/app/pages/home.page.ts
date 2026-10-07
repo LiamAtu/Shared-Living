@@ -1,39 +1,30 @@
 import { Component, computed, inject, OnDestroy, OnInit, signal } from '@angular/core';
 import { CurrencyPipe } from '@angular/common';
-import { Router } from '@angular/router';
+import { RouterLink } from '@angular/router';
 import {
   ActionSheetController,
   AlertController,
-  IonBadge,
   IonButton,
   IonButtons,
-  IonCard,
-  IonCardContent,
   IonContent,
   IonHeader,
   IonIcon,
   IonItem,
   IonLabel,
   IonList,
-  IonListHeader,
-  IonNote,
-  IonProgressBar,
   IonRefresher,
   IonRefresherContent,
-  IonSegment,
-  IonSegmentButton,
   IonTitle,
   IonToolbar,
   ToastController,
 } from '@ionic/angular';
 import { addIcons } from 'ionicons';
 import {
-  addOutline,
-  checkmarkOutline,
-  closeOutline,
-  copyOutline,
-  logOutOutline,
+  add,
   arrowUndoOutline,
+  checkmark,
+  close,
+  settingsOutline,
   trashOutline,
 } from 'ionicons/icons';
 import {
@@ -44,22 +35,25 @@ import {
   Statement,
   SupabaseService,
 } from '../supabase.service';
+import { choreIcon, personTone, Tone } from '../chore-icons';
 
 @Component({
   selector: 'app-home',
   imports: [
-    CurrencyPipe,
-    IonHeader, IonToolbar, IonTitle, IonButtons, IonButton, IonContent, IonCard,
-    IonCardContent, IonList, IonListHeader, IonItem, IonLabel, IonNote, IonBadge,
-    IonIcon, IonProgressBar, IonRefresher, IonRefresherContent, IonSegment, IonSegmentButton,
+    CurrencyPipe, RouterLink,
+    IonHeader, IonToolbar, IonTitle, IonButtons, IonButton, IonContent, IonList, IonItem,
+    IonLabel, IonIcon, IonRefresher, IonRefresherContent,
   ],
   template: `
-    <ion-header>
-      <ion-toolbar color="primary">
+    <ion-header class="ion-no-border">
+      <ion-toolbar>
+        <div slot="start" class="brand">
+          <img src="icons/icon-96x96.png" alt="" />
+        </div>
         <ion-title>{{ house()?.name ?? 'Shared Living' }}</ion-title>
         <ion-buttons slot="end">
-          <ion-button (click)="signOut()" aria-label="Log out">
-            <ion-icon slot="icon-only" name="log-out-outline" />
+          <ion-button routerLink="/settings" aria-label="Settings">
+            <ion-icon slot="icon-only" name="settings-outline" />
           </ion-button>
         </ion-buttons>
       </ion-toolbar>
@@ -71,243 +65,287 @@ import {
       </ion-refresher>
 
       @if (house(); as h) {
-        <div class="wrap">
+        <div class="sl-page">
 
           <!-- ===== Your month ===== -->
-          <ion-card class="month">
-            <ion-card-content>
-              @if (myStatement(); as s) {
-                @if (s.credits_remaining > 0) {
-                  <div class="red-number">{{ s.credits_remaining }}</div>
-                  <div class="caption">credits to go this month</div>
-                } @else {
-                  <div class="red-number done">0</div>
-                  <div class="caption">You're living rent free this month</div>
-                }
-                <ion-progress-bar
-                  [value]="progress()"
-                  [color]="s.credits_remaining > 0 ? 'danger' : 'success'" />
-                <div class="row">
-                  <span>{{ s.credits_earned }} / {{ s.monthly_credit_target }} credits earned</span>
-                  <span>Rent: <strong>{{ s.rent_owed | currency: h.currency }}</strong></span>
-                </div>
-                @if (myPendingCredits() > 0) {
-                  <div class="pending-note">+{{ myPendingCredits() }} waiting for approval</div>
-                }
+          <div class="hero">
+            <div class="hello">Hi {{ myName() }}</div>
+            @if (myStatement(); as s) {
+              @if (s.credits_remaining > 0) {
+                <div class="big red">{{ s.credits_remaining }}</div>
+                <div class="caption">credits to go this month</div>
               } @else {
-                <div class="caption">Loading your month…</div>
+                <div class="big green">0</div>
+                <div class="caption">You're living rent free this month</div>
               }
-            </ion-card-content>
-          </ion-card>
+              <div class="bar" [class.done]="s.credits_remaining === 0">
+                <div class="fill" [style.width.%]="progress() * 100"></div>
+              </div>
+              <div class="stats">
+                <div class="stat">
+                  <span class="v">{{ s.credits_earned }}<small>/{{ s.monthly_credit_target }}</small></span>
+                  <span class="k">earned</span>
+                </div>
+                <div class="stat">
+                  <span class="v">{{ myPendingCredits() ? '+' + myPendingCredits() : '0' }}</span>
+                  <span class="k">waiting for OK</span>
+                </div>
+                <div class="stat">
+                  <span class="v">{{ s.rent_owed | currency: h.currency : 'symbol' : '1.0-2' }}</span>
+                  <span class="k">rent so far</span>
+                </div>
+              </div>
+            } @else {
+              <div class="caption">Loading your month…</div>
+            }
+          </div>
 
           <!-- ===== Needs your OK ===== -->
           @if (toReview().length) {
-            <ion-list inset>
-              <ion-list-header><ion-label>Needs your OK</ion-label></ion-list-header>
-              @for (l of toReview(); track l.id) {
-                <ion-item>
-                  <ion-label>
-                    <h3>{{ l.person_name }} · {{ l.chore_name }}</h3>
-                    <p>{{ timeAgo(l.activity_at) }}{{ l.note ? ' · “' + l.note + '”' : '' }}</p>
-                  </ion-label>
-                  <ion-badge slot="end" color="medium">+{{ l.credits_awarded }}</ion-badge>
-                  <ion-button slot="end" fill="clear" color="success" (click)="review(l, true)" aria-label="Approve">
-                    <ion-icon slot="icon-only" name="checkmark-outline" />
-                  </ion-button>
-                  <ion-button slot="end" fill="clear" color="danger" (click)="review(l, false)" aria-label="Reject">
-                    <ion-icon slot="icon-only" name="close-outline" />
-                  </ion-button>
-                </ion-item>
-              }
-            </ion-list>
+            <div class="sl-section"><h2>Needs your OK<span class="count">{{ toReview().length }}</span></h2></div>
+            <div class="sl-card">
+              <ion-list lines="full">
+                @for (l of toReview(); track l.id) {
+                  <ion-item>
+                    <div [class]="'sl-tile ' + icon(l.chore_name).tone" slot="start">
+                      <ion-icon [name]="icon(l.chore_name).icon" />
+                    </div>
+                    <ion-label class="ion-text-wrap">
+                      <h3>{{ l.chore_name }}</h3>
+                      <p>{{ l.person_name }} · {{ timeAgo(l.activity_at) }} · +{{ l.credits_awarded }}{{ l.note ? ' · “' + l.note + '”' : '' }}</p>
+                    </ion-label>
+                    <div slot="end" class="decide">
+                      <button class="round no" (click)="review(l, false)" aria-label="Reject"><ion-icon name="close" /></button>
+                      <button class="round yes" (click)="review(l, true)" aria-label="Approve"><ion-icon name="checkmark" /></button>
+                    </div>
+                  </ion-item>
+                }
+              </ion-list>
+            </div>
           }
 
           <!-- ===== My chores ===== -->
-          <ion-list inset>
-            <ion-list-header><ion-label>My chores</ion-label></ion-list-header>
-            @for (c of mine(); track c.chore_id) {
-              <ion-item>
-                <ion-label class="ion-text-wrap">
-                  <h3>{{ c.name }}</h3>
-                  <p>{{ c.frequency === 'daily' ? 'Do today' : 'Do by Sunday' }} · {{ credits(c.credit_value) }}</p>
-                </ion-label>
-                <ion-button slot="end" fill="clear" color="medium" (click)="giveBack(c)" aria-label="Give back">
-                  <ion-icon slot="icon-only" name="arrow-undo-outline" />
-                </ion-button>
-                <ion-button slot="end" (click)="complete(c)">Done</ion-button>
-              </ion-item>
-            } @empty {
-              <ion-item lines="none">
-                <ion-label class="ion-text-wrap" color="medium">Nothing on your list. Accept a chore below.</ion-label>
-              </ion-item>
+          <div class="sl-section"><h2>My chores@if (mine().length) {<span class="count">{{ mine().length }}</span>}</h2></div>
+          <div class="sl-card">
+            @if (mine().length) {
+              <ion-list lines="full">
+                @for (c of mine(); track c.chore_id) {
+                  <ion-item>
+                    <div [class]="'sl-tile ' + icon(c.name).tone" slot="start">
+                      <ion-icon [name]="icon(c.name).icon" />
+                    </div>
+                    <ion-label class="ion-text-wrap">
+                      <h3>{{ c.name }}</h3>
+                      <p><span class="due">{{ c.frequency === 'daily' ? 'Today' : 'By Sunday' }}</span> · {{ credits(c.credit_value) }}</p>
+                    </ion-label>
+                    <ion-button slot="end" fill="clear" color="medium" class="icon-btn" (click)="giveBack(c)" aria-label="Give back">
+                      <ion-icon slot="icon-only" name="arrow-undo-outline" />
+                    </ion-button>
+                    <ion-button slot="end" class="pill" (click)="complete(c)">Done</ion-button>
+                  </ion-item>
+                }
+              </ion-list>
+            } @else {
+              <div class="sl-empty">Nothing on your list yet. Accept a chore below to start earning.</div>
             }
-          </ion-list>
+          </div>
 
           <!-- ===== Available ===== -->
-          <ion-list inset>
-            <ion-list-header>
-              <ion-label>Available</ion-label>
-              @if (isAdmin()) {
-                <ion-button (click)="editing.set(!editing())">{{ editing() ? 'Finish' : 'Edit' }}</ion-button>
-                <ion-button (click)="addChore()">
-                  <ion-icon slot="start" name="add-outline" /> Add
+          <div class="sl-section">
+            <h2>Available@if (available().length) {<span class="count">{{ available().length }}</span>}</h2>
+            @if (isAdmin()) {
+              <div>
+                <ion-button fill="clear" size="small" (click)="editing.set(!editing())">{{ editing() ? 'Done' : 'Edit' }}</ion-button>
+                <ion-button fill="clear" size="small" (click)="addChore()">
+                  <ion-icon slot="start" name="add" /> Add
                 </ion-button>
-              }
-            </ion-list-header>
-            @for (c of available(); track c.chore_id) {
-              <ion-item>
-                <ion-label class="ion-text-wrap">
-                  <h3>{{ c.name }}</h3>
-                  <p>
-                    {{ c.frequency === 'daily' ? 'Daily' : 'Weekly' }} · {{ credits(c.credit_value) }}
-                    @if (c.max_per_person_month && c.my_count > 0) { · you've done {{ c.my_count }}/{{ c.max_per_person_month }} }
-                  </p>
-                </ion-label>
-                @if (editing()) {
-                  <ion-button slot="end" fill="clear" color="medium" (click)="removeChore(c)" aria-label="Remove chore">
-                    <ion-icon slot="icon-only" name="trash-outline" />
-                  </ion-button>
-                }
-                <ion-button slot="end" fill="outline" (click)="accept(c)">Accept</ion-button>
-              </ion-item>
-            } @empty {
-              <ion-item lines="none">
-                <ion-label class="ion-text-wrap" color="medium">
-                  @if (board().length) {
-                    Nothing to accept right now.
-                  } @else if (isAdmin()) {
-                    No chores yet. Tap <strong>Add</strong> to set what each job is worth.
-                  } @else {
-                    No chores yet. Ask the house admin to add some.
-                  }
-                </ion-label>
-              </ion-item>
+              </div>
             }
-          </ion-list>
+          </div>
+          <div class="sl-card">
+            @if (available().length) {
+              <ion-list lines="full">
+                @for (c of available(); track c.chore_id) {
+                  <ion-item>
+                    <div [class]="'sl-tile ' + icon(c.name).tone" slot="start">
+                      <ion-icon [name]="icon(c.name).icon" />
+                    </div>
+                    <ion-label class="ion-text-wrap">
+                      <h3>{{ c.name }}</h3>
+                      <p>
+                        {{ c.frequency === 'daily' ? 'Daily' : 'Weekly' }} · {{ credits(c.credit_value) }}
+                        @if (c.max_per_person_month && c.my_count > 0) { · {{ c.my_count }}/{{ c.max_per_person_month }} done }
+                      </p>
+                    </ion-label>
+                    @if (editing()) {
+                      <ion-button slot="end" fill="clear" color="medium" class="icon-btn" (click)="removeChore(c)" aria-label="Remove chore">
+                        <ion-icon slot="icon-only" name="trash-outline" />
+                      </ion-button>
+                    }
+                    <ion-button slot="end" class="pill" fill="outline" (click)="accept(c)">Accept</ion-button>
+                  </ion-item>
+                }
+              </ion-list>
+            } @else {
+              <div class="sl-empty">
+                @if (board().length) {
+                  Nothing to accept right now. Check back later.
+                } @else if (isAdmin()) {
+                  No chores yet. Tap <strong>Add</strong> to set what each job is worth.
+                } @else {
+                  No chores yet. Ask the house admin to add some.
+                }
+              </div>
+            }
+          </div>
 
           <!-- ===== Not available ===== -->
           @if (unavailable().length) {
-            <ion-list inset>
-              <ion-list-header><ion-label>Not available right now</ion-label></ion-list-header>
-              @for (c of unavailable(); track c.chore_id) {
-                <ion-item>
-                  <ion-label class="ion-text-wrap">
-                    <h3 class="muted">{{ c.name }}</h3>
-                    <p>{{ reason(c) }}</p>
-                  </ion-label>
-                  @if (editing()) {
-                    <ion-button slot="end" fill="clear" color="medium" (click)="removeChore(c)" aria-label="Remove chore">
-                      <ion-icon slot="icon-only" name="trash-outline" />
-                    </ion-button>
-                  }
-                </ion-item>
-              }
-            </ion-list>
+            <div class="sl-section"><h2>Not available right now</h2></div>
+            <div class="sl-card">
+              <ion-list lines="full">
+                @for (c of unavailable(); track c.chore_id) {
+                  <ion-item class="quiet">
+                    <div [class]="'sl-tile sm faded ' + icon(c.name).tone" slot="start">
+                      <ion-icon [name]="icon(c.name).icon" />
+                    </div>
+                    <ion-label class="ion-text-wrap">
+                      <h3>{{ c.name }}</h3>
+                      <p>{{ reason(c) }}</p>
+                    </ion-label>
+                    @if (editing()) {
+                      <ion-button slot="end" fill="clear" color="medium" class="icon-btn" (click)="removeChore(c)" aria-label="Remove chore">
+                        <ion-icon slot="icon-only" name="trash-outline" />
+                      </ion-button>
+                    }
+                  </ion-item>
+                }
+              </ion-list>
+            </div>
           }
 
           <!-- ===== House this month ===== -->
-          <ion-list inset>
-            <ion-list-header><ion-label>House this month</ion-label></ion-list-header>
-            @if (isAdmin()) {
-              <ion-item lines="none">
-                <ion-note class="hint">Tap someone to change their monthly target.</ion-note>
-              </ion-item>
-            }
-            @for (row of leaderboard(); track row.user_id) {
-              <ion-item [button]="isAdmin()" [detail]="false" (click)="isAdmin() && editTarget(row)">
-                <ion-label>
-                  <h3>{{ row.name }}{{ row.user_id === myId() ? ' (you)' : '' }}</h3>
-                  <p>{{ row.earned }} / {{ row.target }} credits · rent {{ row.rent | currency: h.currency }}</p>
-                </ion-label>
-                <ion-note slot="end" [class.red]="row.remaining > 0" [class.green]="row.remaining === 0">
-                  {{ row.remaining > 0 ? row.remaining + ' to go' : 'Rent free' }}
-                </ion-note>
-              </ion-item>
-            }
-          </ion-list>
+          <div class="sl-section">
+            <h2>House this month</h2>
+            @if (isAdmin()) { <span class="hint">Tap to set targets</span> }
+          </div>
+          <div class="sl-card">
+            <ion-list lines="full">
+              @for (row of leaderboard(); track row.user_id) {
+                <ion-item [button]="isAdmin()" [detail]="false" (click)="isAdmin() && editTarget(row)">
+                  <div [class]="'avatar ' + row.tone" slot="start">{{ row.name.trim()[0]?.toUpperCase() }}</div>
+                  <ion-label>
+                    <h3>{{ row.name }}{{ row.user_id === myId() ? ' (you)' : '' }}</h3>
+                    <div class="mini-bar"><div [style.width.%]="row.pct" [class.done]="row.remaining === 0"></div></div>
+                    <p>{{ row.earned }} / {{ row.target }} credits</p>
+                  </ion-label>
+                  <div slot="end" class="who-end">
+                    @if (row.remaining === 0) {
+                      <span class="sl-chip approved">Rent free</span>
+                    } @else {
+                      <span class="owed">{{ row.rent | currency: h.currency : 'symbol' : '1.0-2' }}</span>
+                      <span class="togo">{{ row.remaining }} to go</span>
+                    }
+                  </div>
+                </ion-item>
+              }
+            </ion-list>
+          </div>
 
           <!-- ===== Activity ===== -->
-          <ion-list inset>
-            <ion-list-header><ion-label>Recent activity</ion-label></ion-list-header>
-            @for (l of logs(); track l.id) {
-              <ion-item>
-                <ion-label class="ion-text-wrap">
-                  <h3>{{ l.user_id === myId() ? 'You' : l.person_name }} · {{ l.chore_name }}</h3>
-                  <p>{{ timeAgo(l.activity_at) }}{{ l.note ? ' · “' + l.note + '”' : '' }}</p>
-                </ion-label>
-                <ion-badge slot="end" [color]="statusColour(l.status)">
-                  {{ statusLabel(l) }}
-                </ion-badge>
-                @if (l.user_id === myId() && l.status === 'pending') {
-                  <ion-button slot="end" fill="clear" color="medium" (click)="undo(l)" aria-label="Undo">
-                    <ion-icon slot="icon-only" name="arrow-undo-outline" />
-                  </ion-button>
+          <div class="sl-section"><h2>Recent activity</h2></div>
+          <div class="sl-card">
+            @if (logs().length) {
+              <ion-list lines="full">
+                @for (l of logs(); track l.id) {
+                  <ion-item>
+                    <div [class]="'sl-tile sm ' + icon(l.chore_name).tone" slot="start">
+                      <ion-icon [name]="icon(l.chore_name).icon" />
+                    </div>
+                    <ion-label class="ion-text-wrap">
+                      <h3>{{ l.chore_name }}</h3>
+                      <p>{{ l.user_id === myId() ? 'You' : l.person_name }} · {{ timeAgo(l.activity_at) }}{{ l.note ? ' · “' + l.note + '”' : '' }}</p>
+                    </ion-label>
+                    @if (l.user_id === myId() && l.status === 'pending') {
+                      <ion-button slot="end" fill="clear" color="medium" class="icon-btn" (click)="undo(l)" aria-label="Undo">
+                        <ion-icon slot="icon-only" name="arrow-undo-outline" />
+                      </ion-button>
+                    }
+                    <span slot="end" [class]="'sl-chip ' + chipClass(l.status)">{{ statusLabel(l) }}</span>
+                  </ion-item>
                 }
-              </ion-item>
-            } @empty {
-              <ion-item lines="none">
-                <ion-label color="medium">Nothing logged yet.</ion-label>
-              </ion-item>
+              </ion-list>
+            } @else {
+              <div class="sl-empty">Nothing done yet this month.</div>
             }
-          </ion-list>
-
-          <!-- ===== House settings ===== -->
-          <ion-list inset>
-            <ion-list-header><ion-label>House</ion-label></ion-list-header>
-            <ion-item>
-              <ion-label>
-                <h3>Invite code</h3>
-                <p class="code">{{ h.invite_code }}</p>
-              </ion-label>
-              <ion-button slot="end" fill="clear" (click)="copyCode(h.invite_code)" aria-label="Copy invite code">
-                <ion-icon slot="icon-only" name="copy-outline" />
-              </ion-button>
-            </ion-item>
-            <ion-item lines="none">
-              <ion-label class="ion-text-wrap">
-                <h3>If you miss your target</h3>
-                @if (isAdmin()) {
-                  <ion-segment [value]="h.rent_mode" (ionChange)="setRentMode($any($event.detail.value))">
-                    <ion-segment-button value="proportional"><ion-label>Pay what you're short</ion-label></ion-segment-button>
-                    <ion-segment-button value="all_or_nothing"><ion-label>Pay full rent</ion-label></ion-segment-button>
-                  </ion-segment>
-                }
-                <p>
-                  @if (h.rent_mode === 'proportional') {
-                    You pay the share of rent you didn't earn. Earn 60% of your credits, pay 40% of {{ h.monthly_rent | currency: h.currency }}.
-                  } @else {
-                    Hit your target and pay nothing. Miss it and pay the full {{ h.monthly_rent | currency: h.currency }}.
-                  }
-                </p>
-              </ion-label>
-            </ion-item>
-          </ion-list>
+          </div>
         </div>
       }
     </ion-content>
   `,
   styles: `
-    .wrap { max-width: 560px; margin: 0 auto; padding-bottom: 24px; }
-    .month { text-align: center; margin-top: 16px; }
-    .red-number { font-size: 4.5rem; font-weight: 800; line-height: 1; color: var(--ion-color-danger); margin-top: 8px; }
-    .red-number.done { color: var(--ion-color-success); }
-    .caption { margin: 6px 0 16px; color: var(--ion-color-medium); font-size: 0.95rem; }
-    ion-progress-bar { height: 8px; border-radius: 4px; }
-    .row { display: flex; justify-content: space-between; gap: 8px; margin-top: 12px; font-size: 0.9rem; flex-wrap: wrap; }
-    .pending-note { margin-top: 8px; font-size: 0.85rem; color: var(--ion-color-medium); }
-    ion-list-header ion-button { margin-right: 8px; }
-    ion-note.red { color: var(--ion-color-danger); font-weight: 700; }
-    ion-note.green { color: var(--ion-color-success); font-weight: 700; }
-    ion-note.hint { font-size: 0.85rem; }
-    h3.muted { color: var(--ion-color-medium); }
-    .code { font-family: ui-monospace, monospace; letter-spacing: 0.15em; font-size: 1.2rem !important; }
-    ion-segment { margin: 8px 0; }
-    ion-segment-button ion-label { white-space: normal; font-size: 0.8rem; }
+    .brand { padding-left: 4px; display: flex; }
+    .brand img { width: 34px; height: 34px; border-radius: 10px; box-shadow: var(--sl-shadow); }
+    ion-title { padding-inline: 10px; font-size: 1.15rem; }
+
+    /* Hero card with the red number */
+    .hero {
+      margin-top: 6px; padding: 20px 20px 18px; border-radius: 26px; text-align: center;
+      background: var(--sl-surface); box-shadow: var(--sl-shadow); position: relative; overflow: hidden;
+    }
+    .hero::before {
+      content: ''; position: absolute; inset: 0 0 auto 0; height: 6px;
+      background: linear-gradient(90deg, var(--sl-mint), var(--sl-lavender), var(--sl-butter), var(--sl-peach));
+    }
+    .hello { font-weight: 800; color: var(--sl-muted); font-size: 0.95rem; margin-top: 4px; }
+    .big { font-size: 5rem; font-weight: 900; line-height: 1; letter-spacing: -0.04em; margin-top: 6px; }
+    .big.red { color: var(--sl-red); }
+    .big.green { color: var(--sl-green); }
+    .caption { color: var(--sl-muted); font-weight: 700; margin: 4px 0 16px; }
+    .bar { height: 12px; border-radius: 999px; background: var(--sl-surface-2); overflow: hidden; }
+    .bar .fill { height: 100%; border-radius: 999px; background: var(--sl-red); transition: width 0.5s ease; min-width: 12px; }
+    .bar.done .fill { background: var(--sl-green); }
+    .stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-top: 16px; }
+    .stat { background: var(--sl-surface-2); border-radius: 16px; padding: 10px 6px; display: flex; flex-direction: column; gap: 2px; }
+    .stat .v { font-weight: 900; font-size: 1.15rem; }
+    .stat .v small { font-weight: 700; color: var(--sl-muted); font-size: 0.8rem; }
+    .stat .k { font-size: 0.72rem; font-weight: 700; color: var(--sl-muted); }
+
+    .sl-section .hint { font-size: 0.8rem; color: var(--sl-muted); font-weight: 700; }
+    .due { font-weight: 800; color: var(--sl-text); }
+    .icon-btn { --padding-start: 6px; --padding-end: 6px; margin: 0; }
+    ion-item .pill { margin-left: 2px; }
+    ion-item.quiet h3 { color: var(--sl-muted); }
+
+    .decide { display: flex; gap: 8px; }
+    .round {
+      width: 40px; height: 40px; border-radius: 50%; border: none; display: grid; place-items: center;
+      font-size: 22px; color: var(--sl-glyph); cursor: pointer;
+    }
+    .round.yes { background: var(--sl-mint); }
+    .round.no { background: var(--sl-peach); }
+    .round:active { transform: scale(0.94); }
+
+    .avatar {
+      width: 40px; height: 40px; border-radius: 50%; display: grid; place-items: center; margin-right: 12px;
+      font-weight: 900; color: var(--sl-glyph); background: var(--sl-surface-2); flex-shrink: 0;
+    }
+    .avatar.mint { background: var(--sl-mint); }
+    .avatar.lavender { background: var(--sl-lavender); }
+    .avatar.butter { background: var(--sl-butter); }
+    .avatar.peach { background: var(--sl-peach); }
+    .avatar.sky { background: var(--sl-sky); }
+    .avatar.rose { background: var(--sl-rose); }
+    .mini-bar { height: 6px; border-radius: 999px; background: var(--sl-surface-2); overflow: hidden; margin: 6px 0 4px; max-width: 160px; }
+    .mini-bar div { height: 100%; background: var(--sl-red); border-radius: 999px; }
+    .mini-bar div.done { background: var(--sl-green); }
+    .who-end { display: flex; flex-direction: column; align-items: flex-end; gap: 2px; }
+    .owed { font-weight: 900; }
+    .togo { font-size: 0.78rem; font-weight: 800; color: var(--sl-red); }
   `,
 })
 export class HomePage implements OnInit, OnDestroy {
   private supabase = inject(SupabaseService);
-  private router = inject(Router);
   private toast = inject(ToastController);
   private alerts = inject(AlertController);
   private sheets = inject(ActionSheetController);
@@ -320,6 +358,9 @@ export class HomePage implements OnInit, OnDestroy {
   readonly statements = signal<Statement[]>([]);
 
   readonly myId = computed(() => this.supabase.session()?.user.id ?? '');
+  readonly myName = computed(
+    () => this.members().find((m) => m.user_id === this.myId())?.display_name?.split(' ')[0] ?? '',
+  );
   readonly isAdmin = computed(
     () => this.members().find((m) => m.user_id === this.myId())?.role === 'admin',
   );
@@ -345,11 +386,14 @@ export class HomePage implements OnInit, OnDestroy {
     this.members()
       .map((m) => {
         const s = this.statements().find((x) => x.user_id === m.user_id);
+        const earned = s?.credits_earned ?? 0;
         return {
           user_id: m.user_id,
           name: m.display_name,
-          earned: s?.credits_earned ?? 0,
+          tone: personTone(m.user_id) as Tone,
+          earned,
           target: m.monthly_credit_target,
+          pct: Math.min(100, (earned / Math.max(1, m.monthly_credit_target)) * 100),
           remaining: s?.credits_remaining ?? m.monthly_credit_target,
           rent: s?.rent_owed ?? this.house()?.monthly_rent ?? 0,
         };
@@ -359,12 +403,10 @@ export class HomePage implements OnInit, OnDestroy {
 
   private stopWatching?: () => void;
   private reloadTimer?: ReturnType<typeof setTimeout>;
+  private iconCache = new Map<string, { icon: string; tone: Tone }>();
 
   constructor() {
-    addIcons({
-      addOutline, checkmarkOutline, closeOutline, copyOutline,
-      logOutOutline, arrowUndoOutline, trashOutline,
-    });
+    addIcons({ add, arrowUndoOutline, checkmark, close, settingsOutline, trashOutline });
   }
 
   async ngOnInit() {
@@ -374,6 +416,11 @@ export class HomePage implements OnInit, OnDestroy {
     await this.load();
     // Refresh whenever a housemate logs or approves something
     this.stopWatching = this.supabase.watchHouse(house.id, () => this.scheduleReload());
+  }
+
+  /** Coming back from Settings: pick up a new name or rent rule. */
+  ionViewWillEnter() {
+    if (this.house()) this.load();
   }
 
   ngOnDestroy() {
@@ -425,7 +472,7 @@ export class HomePage implements OnInit, OnDestroy {
     const logId = c.log_id;
     const alert = await this.alerts.create({
       header: c.name,
-      message: `Mark as done for ${c.credit_value} credits? A housemate will approve it.`,
+      message: `Mark as done for ${this.credits(c.credit_value)}? A housemate will approve it.`,
       inputs: [{ name: 'note', type: 'text', placeholder: 'Add a note (optional)' }],
       buttons: [
         { text: 'Cancel', role: 'cancel' },
@@ -460,25 +507,10 @@ export class HomePage implements OnInit, OnDestroy {
     await alert.present();
   }
 
-  reason(c: BoardChore): string {
-    switch (c.state) {
-      case 'taken':
-        return `${c.holder_name ?? 'Someone'} is on it`;
-      case 'done':
-        return `Done today by ${c.holder_name ?? 'someone'}`;
-      case 'cooldown':
-        return `Back on ${this.formatDate(c.available_from)}`;
-      case 'limit':
-        return `You've done your ${c.max_per_person_month} this month`;
-      default:
-        return '';
-    }
-  }
-
   review(log: ChoreLog, approve: boolean) {
     return this.act(
       () => this.supabase.reviewLog(log.id, approve),
-      approve ? `Approved ${log.person_name}'s ${log.chore_name.toLowerCase()}` : 'Rejected',
+      approve ? `Approved ${log.person_name}'s ${log.chore_name}` : 'Rejected',
     );
   }
 
@@ -498,7 +530,7 @@ export class HomePage implements OnInit, OnDestroy {
       buttons: [
         { text: 'Cancel', role: 'cancel' },
         {
-          text: 'Add',
+          text: 'Next',
           handler: (v) => {
             const name = (v?.name ?? '').trim();
             const credits = Math.round(Number(v?.credits));
@@ -585,23 +617,31 @@ export class HomePage implements OnInit, OnDestroy {
     await alert.present();
   }
 
-  setRentMode(mode: House['rent_mode']) {
-    const h = this.house();
-    if (!h || h.rent_mode === mode) return;
-    return this.act(() => this.supabase.updateHouse(h.id, { rent_mode: mode }), 'Rent rule updated');
-  }
-
-  async copyCode(code: string) {
-    await navigator.clipboard?.writeText(code);
-    this.show('Invite code copied');
-  }
-
-  async signOut() {
-    await this.supabase.signOut();
-    await this.router.navigateByUrl('/login', { replaceUrl: true });
-  }
-
   // ---------- Helpers ----------
+
+  icon(name: string) {
+    let v = this.iconCache.get(name);
+    if (!v) {
+      v = choreIcon(name);
+      this.iconCache.set(name, v);
+    }
+    return v;
+  }
+
+  reason(c: BoardChore): string {
+    switch (c.state) {
+      case 'taken':
+        return `${c.holder_name ?? 'Someone'} is on it`;
+      case 'done':
+        return `Done today by ${c.holder_name ?? 'someone'}`;
+      case 'cooldown':
+        return `Back on ${this.formatDate(c.available_from)}`;
+      case 'limit':
+        return `You've done your ${c.max_per_person_month} this month`;
+      default:
+        return '';
+    }
+  }
 
   private async act(action: () => Promise<void>, success: string) {
     try {
@@ -618,13 +658,8 @@ export class HomePage implements OnInit, OnDestroy {
     await t.present();
   }
 
-  statusColour(status: ChoreLog['status']) {
-    switch (status) {
-      case 'approved': return 'success';
-      case 'rejected': return 'danger';
-      case 'expired': return 'medium';
-      default: return 'warning';
-    }
+  chipClass(status: ChoreLog['status']) {
+    return status === 'expired' ? 'missed' : status;
   }
 
   statusLabel(l: ChoreLog): string {
@@ -632,7 +667,7 @@ export class HomePage implements OnInit, OnDestroy {
       case 'approved': return '+' + l.credits_awarded;
       case 'rejected': return 'Rejected';
       case 'expired': return 'Missed';
-      default: return 'Pending';
+      default: return 'Waiting';
     }
   }
 
@@ -657,6 +692,6 @@ export class HomePage implements OnInit, OnDestroy {
     if (hrs < 24) return `${hrs}h ago`;
     const days = Math.round(hrs / 24);
     if (days < 7) return `${days}d ago`;
-    return new Date(iso).toLocaleDateString();
+    return new Date(iso).toLocaleDateString('en-IE', { day: 'numeric', month: 'short' });
   }
 }
